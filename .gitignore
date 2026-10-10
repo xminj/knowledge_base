@@ -1,0 +1,31 @@
+# 默认忽略所有 dotfile（防止未知工具的文件被提交）
+.*
+
+# 保留以下 dotfile
+!.obsidian/
+!.gitignore
+!.gitattributes
+
+# Obsidian - 设备相关文件
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+
+# 插件目录（代码、配置、依赖全部忽略）
+.obsidian/plugins/
+
+# 缓存
+.obsidian/cache/
+
+# 回收站
+.trash/
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 临时文件
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
