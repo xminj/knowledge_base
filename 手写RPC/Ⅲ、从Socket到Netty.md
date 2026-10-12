@@ -79,5 +79,89 @@ Netty只负责"传字节"，但**字节流没有消息边界**。就像水管里
 ```
 三个请求公用一个TCP链接，响应回来是**怎么知道是那个请求**
 就需要使用每次请求携带的requestId，响应在返回这个Id。
+
 **实现机制**
-·
+```java
+// 客户端维护一个映射表
+Map<Long, CompletableFuture<RpcResponse>> pendingRequests;
+
+// 发送时
+long requestId = idGenerator.incrementAndGet();
+CompletableFuture<RpcResponse> future = new CompletableFuture<>();
+pendingRequests.put(requestId, future);
+channel.writeAndFlush(message);  // message 里带 requestId
+
+// 响应回来时
+CompletableFuture<RpcResponse> future = pendingRequests.remove(msg.getRequestId());
+
+future.complete(msg.getData());
+```
+
+**一张图理解**
+```text
+客户端                                服务端
+  │                                    │
+  │── 请求(id=1) ──────────────────────>│
+  │── 请求(id=2) ──────────────────────>│
+  │── 请求(id=3) ──────────────────────>│
+  │                                    │ 处理...
+  │<────────────────── 响应(id=2, 4) ───│
+  │<────────────────── 响应(id=1, 2) ───│
+  │<────────────────── 响应(id=3, 6) ───│
+  │                                    │
+  future(id=1).complete(2)             │
+  future(id=2).complete(4)             │
+  future(id=3).complete(6)             │
+```
+
+# 四、设计决策3：粘包拆包怎么解决？
+
+TCP是字节流，会出现两种情况
+* 粘包：两次请求的数据粘在一起，一次收到
+* 拆包：一次请求的数据被拆成两次收到
+
+解决方案：长度前缀
+```text
+解码逻辑：
+1、收数据
+2、如果不够20个字节（头），直接return，等下次
+3、标记当前读指针（markReaderIndex）
+4、读请求头，解析出length
+5、如果剩余字节 < length，说明body没有收全。回退到标记位置（resetReaderIndex），等下次
+6、body收全了，读出来，反序列化
+```
+**关键代码**
+```java
+@Override
+protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) {
+    // 1. 头都没收全
+    if (in.readableBytes() < HEADER_LENGTH) {
+        return;   // 等下次
+    }
+
+    // 2. 标记读指针
+    in.markReaderIndex();
+
+    // 3. 读头
+    int magic = in.readInt();
+    // ... 读其他字段
+    int length = in.readInt();
+
+    // 4. body 没收全，回退！
+    if (in.readableBytes() < length) {
+        in.resetReaderIndex();   // 关键！
+        return;
+    }
+
+    // 5. 读 body
+    byte[] body = new byte[length];
+    in.readBytes(body);
+    // ...
+}
+```
+**为什么不行 `markReaderIndex`+ `resetReaderIndex`**
+* 如果头收了但body没收全，头已经*被读了*，指针无法回退
+* 下次数据来了，会从错误的位置开始读
+* 结果就是：**从第二次包开始全乱**
+
+# 五、设计决策4：为什么使用`SimpleChannelInboundHan`
