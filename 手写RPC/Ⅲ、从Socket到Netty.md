@@ -182,4 +182,12 @@ Netty有两个常用的入站处理基类：
 **链接断开后pendingRequests内存泄漏**
 * 现象：服务端重启几次，客户端内存不断上涨
 * 原因：链接断开后，`pendingRequests` 里的Future永远不会被唤醒。调用方在future.get(timeout)上超时了,但Future对象还被Map引用着,不释放.
-* 解决:在channelInactive遍历`pendingRequests`
+* 解决:在`channelInactive`遍历`pendingRequests`
+	```java
+@Override
+public void channelInactive(ChannelHandlerContext ctx) {
+    pendingRequests.forEach((id, future) -> 
+        future.completeExceptionally(new RpcException("连接断开")));
+    pendingRequests.clear();
+}
+	```
