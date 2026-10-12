@@ -177,8 +177,21 @@ Netty有两个常用的入站处理基类：
 
 # 六、问题记录
 **编解码器字字段顺序不一致**
+* 现象: 服务端收到的 requestId 永远是 0，其他字段也乱。
+* 排查：抓包对比，发现客户端写的顺序和服务端读的顺序不同。
+* 原因: `RpcEncoder` 写字段的顺序和 `RpcDecoder` 读的顺序必须**严格一致**。我改了协议头，只改了编码器，忘了改解码器。
+* 解决：把协议格式写在类注释里，两边对照。建议**编码器和解码器放在同一个包**，改的时候一起看。
+
 **`markReaderIndex`忘了reset，第二次解码全错**
+* 现象: 第一个请求正常，第二个请求开始数据错乱。
+* 原因: 读到一半发现 body 不够，直接 `return` 但没 `resetReaderIndex`。指针停在了"头之后、body 之前"的位置。
+* 解决：**凡是读了一部分要返回，必须 `resetReaderIndex`**。用 try-finally 更保险。
+
 **心跳响应被当成业务响应**
+* 现象: 客户端发业务请求后，有时候收到心跳响应，`future` 被错误唤醒，返回奇怪的数据。
+* 原因: `RpcClientHandler` 只判断了 `pendingRequests` 里有没有这个 ID，但心跳的 requestId 是 `System.currentTimeMillis()`，恰好可能和某个业务请求撞上。
+* 解决：**先判断 `messageType`**，心跳直接 `return`，不查 pendingRequests。
+
 **链接断开后pendingRequests内存泄漏**
 * 现象：服务端重启几次，客户端内存不断上涨
 * 原因：链接断开后，`pendingRequests` 里的Future永远不会被唤醒。调用方在future.get(timeout)上超时了,但Future对象还被Map引用着,不释放.
