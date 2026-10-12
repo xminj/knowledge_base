@@ -164,4 +164,21 @@ protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) {
 * 下次数据来了，会从错误的位置开始读
 * 结果就是：**从第二次包开始全乱**
 
-# 五、设计决策4：为什么使用`SimpleChannelInboundHan`
+# 五、设计决策4：为什么使用`SimpleChannelInboundHandler`
+
+Netty有两个常用的入站处理基类：
+
+| 基类                           | 是否自动release | 适用场景               |
+| ---------------------------- | ----------- | ------------------ |
+| ChannelInboundHandlerAdapter | 否，手动        | 需要传递msg给下一个handler |
+| SimpleChannelInboundHandler  | 是，自动        | 处理完了就结束            |
+选`SimpleChannelInboundHandler`：因为处理器处理完msg就完事了，不需要往下传
+**代价**：如果需要把msg传给下一个handler，需要`ReferenceCountUtile.retain(msg)`，否则下一个handler拿到的是一个已释放的对象
+
+# 六、问题记录
+**编解码器字字段顺序不一致**
+**`markReaderIndex`忘了reset，第二次解码全错**
+**心跳响应被当成业务响应**
+**链接断开后pendingRequests内存泄漏**
+* 现象：服务端重启几次，客户端内存不断上涨
+* 原因：链接断开后，`pendingRequests` 里的Future永远不会被唤醒。调用方在future.get(timeout)上超时了,但Future对象还被
