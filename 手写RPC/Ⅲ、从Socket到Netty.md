@@ -22,4 +22,9 @@
 **选Netty的理由**
 * 事实标准：Dubbo、RocketMQ、gRPC-Java 都用它，值得学习
 * 编解码框架成熟：`ByteToMessageDecoder`让粘包处理有章可循
-* 
+* 内置心跳：`IdleStateHandler`直接支持
+**核心变化**
+
+| 维度  | 阶段  |     |
+| --- | --- | --- |
+|     |     |     |
