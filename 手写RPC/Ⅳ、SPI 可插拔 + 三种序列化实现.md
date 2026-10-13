@@ -69,3 +69,6 @@ Serializer s = SpiLoader.load(Serializer.class, "hessian");
 ```
 **为什么不用Java SPI**
 * Java SPI 一次性加载说所有实现，不管用不用
+* 无法按名字获取指定的实现，只能遍历
+* 没有默认值、别名、优先级
+
