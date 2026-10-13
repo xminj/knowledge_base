@@ -273,4 +273,12 @@ public class HessianSerializer implements Serializer {
 }
 ```
 
-# 六、设计决策3：为什么fuu
+# 六、设计决策3：为什么服务端不固定序列化方式？
+
+**如果服务端固定用 Hessian**：
+* 老客户端用 JDK → 服务端解不了，直接报错
+* 无法灰度升级
+**如果服务端按请求头 codec 匹配**：
+* 客户端用什么，服务端就用什么
+* 升级平滑，兼容老客户端
+* 
