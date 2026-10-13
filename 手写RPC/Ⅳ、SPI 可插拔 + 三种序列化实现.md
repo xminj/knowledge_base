@@ -52,5 +52,20 @@ static {
 | 静态方案             | 简单     | 写死，不可扩展     |
 | Java SPI         | jdk内置  | 全量加载，无法按名获取 |
 | Dubbo SPI        | 按需，有别名 | 要自己实现       |
-| Spring Factories | 生态好    |             |
+| Spring Factories | 生态好    | 依赖Spring    |
 
+**选择Dubbo风格的轻量SPI**
+核心机制
+```text
+配置文件：META-INF/rpc/com.minirpc.common.Serializer
+内容：
+  jdk=com.minirpc.serialization.JdkSerializer
+  json=com.minirpc.serialization.JsonSerializer
+  hessian=com.minirpc.serialization.HessianSerializer
+```
+加载时
+```java
+Serializer s = SpiLoader.load(Serializer.class, "hessian");
+```
+**为什么不用Java SPI**
+* Java SPI 一次性加载说所有实现，不管用不用
