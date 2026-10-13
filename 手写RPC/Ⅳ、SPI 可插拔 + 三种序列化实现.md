@@ -222,3 +222,55 @@ public class SerializerSpiLoader {
 * 二进制不可读，调式困难->所有保留JSON作为可切换选项
 * 不支持LocalDataTime ->需要额外处理
 * 要求五参数构造
+
+# 五、三个序列化实现
+
+**JdkSerializer**
+```java 
+public class JdkSerializer implements Serializer {
+    @Override
+    public byte[] serialize(Object obj) {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        ObjectOutputStream oos = new ObjectOutputStream(bos);
+        oos.writeObject(obj);
+        return bos.toByteArray();
+    }
+    // ...
+    @Override
+    public byte getCodec() { return 1; }
+}
+```
+
+**JsonSerializer**
+```java
+public class JsonSerializer implements Serializer {
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    @Override
+    public byte[] serialize(Object obj) {
+        return MAPPER.writeValueAsBytes(obj);
+    }
+    // ...
+    @Override
+    public byte getCodec() { return 2; }
+}
+```
+
+**HessianSerializer**
+```java
+public class HessianSerializer implements Serializer {
+    @Override
+    public byte[] serialize(Object obj) {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        Hessian2Output output = new Hessian2Output(bos);
+        output.writeObject(obj);
+        output.flush();
+        return bos.toByteArray();
+    }
+    // ...
+    @Override
+    public byte getCodec() { return 3; }
+}
+```
+
+# 六、设计决策3：为什么fuu
