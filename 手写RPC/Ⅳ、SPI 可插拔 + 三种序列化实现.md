@@ -281,4 +281,141 @@ public class HessianSerializer implements Serializer {
 **如果服务端按请求头 codec 匹配**：
 * 客户端用什么，服务端就用什么
 * 升级平滑，兼容老客户端
-* 
+
+**服务端解码器的写法**：
+```java
+// RpcDecoder.decode()
+byte codec = in.readByte();
+// ...
+Serializer serializer = SerializerFactory.getSerializer(codec);  // 动态匹配
+Object data = serializer.deserialize(body, clazz);
+```
+**这就体现了协议设计的价值**：**codec 字段让序列化的选择权留在客户端**。
+
+# 七、配置化：让用户选择
+
+**rpc.properties**：
+```properties
+# 默认序列化方式：jdk / json / hessian
+rpc.serializer=hessian
+```
+
+**RpcConfig读取**
+```java 
+public class RpcConfig {
+    private static final Properties PROPS = new Properties();
+
+    static {
+        try (InputStream in = RpcConfig.class.getClassLoader()
+                .getResourceAsStream("rpc.properties")) {
+            PROPS.load(in);
+        } catch (Exception ignored) {}
+    }
+
+    public static String getSerializer() {
+        return PROPS.getProperty("rpc.serializer", "hessian");
+    }
+}
+```
+**客户端使用**：
+```java
+String name = RpcConfig.getSerializer();
+Serializer serializer = SpiLoader.load(Serializer.class, name);
+
+RpcMessage msg = new RpcMessage();
+msg.setCodec(serializer.getCodec());
+// ...
+```
+
+# 八、压测
+**测试对象**：一个包含 5 个字段的 `User` 对象（id/name/age/email/address）
+**测试方法**：预热 1000 次，循环 10 万次
+**测试代码**：
+```java
+public class SerializerBenchmark {  
+  
+    private static final int WARMUP = 5000;  
+    private static final int LOOP = 100_000;  
+  
+  
+    public static void main(String[] args) {  
+        User user = new User();  
+        user.setId(1L);  
+        user.setName("张三");  
+        user.setAge(25);  
+        user.setEmail("zhangsan@example.com");  
+        user.setAddress("北京市朝阳区xxx路xxx号");  
+       
+        for (String name : new String[]{"jdk", "json", "hessian"}) {  
+            Serializer serializer = SerializerSpiLoader.load(Serializer.class, name);  
+            benchmark(serializer, user, name);  
+        }  
+    }  
+  
+    private static void benchmark(Serializer serializer, Object obj, String name) {  
+        // 预热  
+        for (int i = 0; i < WARMUP; i++) {  
+            byte[] bytes = serializer.serialize(obj);  
+            serializer.deserialize(bytes, obj.getClass());  
+        }  
+  
+        // 序列化  
+        long start = System.nanoTime();  
+        byte[] data = null;  
+        for (int i = 0; i < LOOP; i++) {  
+            data = serializer.serialize(obj);  
+        }  
+        long serTime = System.nanoTime() - start;  
+  
+        // 反序列化  
+        start = System.nanoTime();  
+        for (int i = 0; i < LOOP; i++) {  
+            serializer.deserialize(data,obj.getClass());  
+        }  
+        long deserTime = System.nanoTime() - start;  
+  
+        System.out.printf("%-10s 序列化: %6.2f ms | 反序列化: %6.2f ms | 字节数: %d%n",  
+                name,  
+                serTime / 1_000_000.0,  
+                deserTime / 1_000_000.0,  
+                data.length);  
+    }  
+}
+```
+**测试结果**：待补充
+
+
+# 九、问题记录
+
+**SPI 配置文件路径写错**
+* 现象：`SpiLoader` 找不到实现，报"未找到 SPI 实现"。
+* 排查：打印 `resource` 路径，发现是 `META-INF/rpc/Serializer`（少了包名）。
+* 原因：SPI 配置文件名必须是**接口的全限定名**，不是简单类名。
+* 解决：
+	* META-INF/rpc/com.minirpc.common.Serializer
+	* META-INF/rpc/Serializer
+
+**Hessian 序列化 `LocalDateTime` 报错**
+* 现象：`java.io.IOException: java.time.LocalDateTime`。
+* 原因：Hessian2 原生不支持 JDK8 时间类型。
+* 解决：
+	* 引入 `hessian-lite`（Dubbo 的版本，已支持）
+	* 或者给 `Hessian2Output` 注册 `SerializerFactory`：
+	* ```java
+SerializerFactory factory = new SerializerFactory();
+factory.addFactory(new Java8TimeSerializerFactory());
+output.setSerializerFactory(factory);
+	  ```
+
+**被序列化的类没有无参构造**
+* 现象：Hessian 反序列化抛 `InstantiationException`。
+* 原因：Hessian 通过无参构造函数创建对象，再用反射填充字段。
+* 解决：所有传输对象加 `@NoArgsConstructor`（Lombok）。
+
+
+**`SpiLoader` 缓存导致新实现不生效**
+* 现象：加了新实现，重启后还是用老的。
+* 原因：`CACHE` 是静态 Map，类加载后不会刷新。
+* 解决：
+	* 生产环境一般不需要热加载
+	* 开发期可加 `SpiLoader.clearCache()` 手动刷新
