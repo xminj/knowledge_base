@@ -72,3 +72,143 @@ Serializer s = SpiLoader.load(Serializer.class, "hessian");
 * 无法按名字获取指定的实现，只能遍历
 * 没有默认值、别名、优先级
 
+# 三、SPI实现
+**@SPI注解**
+```java
+@Documented  
+@Target(ElementType.TYPE)  
+@Retention(RetentionPolicy.RUNTIME)  
+public @interface SerializerSPI {  
+    /**  
+     * 默认实现名  
+     */  
+    String value() default "";  
+}
+```
+
+**接口声明**
+```java 
+/**  
+ * 序列化接口 —— 所有序列化实现必须遵守  
+ */  
+@SerializerSPI("hessian")  
+public interface Serializer {  
+    /**  
+     * 序列化  
+     *  
+     * @param obj 参数  
+     * @return 序列化后的字节数组  
+     */  
+    byte[] serialize(Object obj);  
+  
+    /**  
+     * 反序列化  
+     *  
+     * @param bytes 数据  
+     * @param clazz 对象  
+     * @param <T>   反序列化后的对象  
+     * @return T  
+     */    <T> T deserialize(byte[] bytes, Class<T> clazz);  
+  
+  
+    /**  
+     * 序列化类型编码（用于协议头标识）  
+     */  
+    byte getCodec();  
+}
+```
+
+**SpiLoader核心逻辑**
+```java
+public class SerializerSpiLoader {  
+  
+    /**  
+     * 配置目录  
+     */  
+    private static final String SPI_DIR = "META-INF/rpc/";  
+  
+    /**  
+     * 缓存，接口类 -> (name -> 实例)  
+     */    private static final Map<Class<?>, Map<String, Object>> serializers = new ConcurrentHashMap<>();  
+  
+  
+    /**  
+     * 按名字加载  
+     */  
+    @SuppressWarnings("unchecked")  
+    public static <T> T load(Class<T> clazz, String name) {  
+        Map<String, Object> instances = serializers.computeIfAbsent(clazz, SerializerSpiLoader::loadAll);  
+        Object instance = instances.get(name);  
+        if (Objects.isNull(instance)) {  
+            throw new RpcException("未找到 SPI 实现: " + clazz.getName() + "#" + name);  
+        }  
+        return (T) instance;  
+    }  
+  
+  
+    /**  
+     * 加载默认是实现  
+     */  
+    public static <T> T loadDefault(Class<T> clazz) {  
+        SerializerSPI spi = clazz.getAnnotation(SerializerSPI.class);  
+        if (Objects.isNull(spi) || spi.value().isEmpty()) {  
+            throw new RpcException("接口未标注 @SPI 或未指定默认实现: " + clazz.getName());  
+        }  
+        return load(clazz, spi.value());  
+    }  
+  
+    /**  
+     * 加载某接口的全部实现  
+     */  
+    public static Map<String, Object> loadAll(Class<?> clazz) {  
+        Map<String, Object> result = new ConcurrentHashMap<>();  
+        String resource = SPI_DIR + clazz.getName();  
+  
+        try {  
+            ClassLoader cl = SerializerSpiLoader.class.getClassLoader();  
+            Enumeration<URL> urls = cl.getResources(resource);  
+            while (urls.hasMoreElements()) {  
+                URL url = urls.nextElement();  
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(url.openStream(), StandardCharsets.UTF_8))) {  
+                    String line;  
+                    while ((line = reader.readLine()) != null) {  
+                        line = line.trim();  
+                        // 增加 注释过滤  
+                        if (line.isEmpty() || line.startsWith("#")) continue;  
+  
+                        int idx = line.indexOf('=');  
+                        if (idx < 0) continue;  
+  
+                        String name = line.substring(0, idx).trim();  
+                        String className = line.substring(idx + 1).trim();  
+  
+                        Class<?> implClass = Class.forName(className);  
+                        Object instance = implClass.getDeclaredConstructor().newInstance();  
+  
+                        result.put(name, instance);  
+                    }  
+                }  
+            }  
+  
+        } catch (Exception e) {  
+            throw new RpcException("加载 SPI 失败: " + clazz.getName(), e);  
+        }  
+        return result;  
+    }
+```
+
+**设计细节**
+* serializers缓存：避免每次都读文件
+* getResources：支持多个jar提供同一个接口的实现
+* 格式name=class：比Java SPI的一行一个类更灵活
+
+# 四、设计决策2：为什么选Hessian2做默认？
+
+候选方案对比
+
+| 方案    | 性能  | 跨语言 | 可读  | 复杂度 |
+| ----- | --- | --- | --- | --- |
+| JDK原生 |     |     |     |     |
+|       |     |     |     |     |
+|       |     |     |     |     |
+|       |     |     |     |     |
