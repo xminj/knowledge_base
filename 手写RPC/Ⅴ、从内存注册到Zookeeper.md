@@ -218,9 +218,10 @@ Consumer 的 CuratorCache 收到通知
 
 # 七、问题记录
 * **ZK 连接失败但程序不报错**
-	* 现象
-	* 原因
-	* 解决
+	* 现象：Provider 启动了，但 Consumer 找不到服务。
+	* 排查：日志里没有报错，一切"看起来正常"。
+	* 原因：`CuratorFrameworkFactory.newClient()` 不会立即连接，`client.start()` 是**异步**的。如果 ZK 地址错误，要等很久才报错。
+	* 解决：调用 `client.blockUntilConnected(5, TimeUnit.SECONDS)` 显式等待连接成功。
 
 * **Provider 端口冲突但注册成功了**
 	*  现象：第二个 Provider 用相同端口启动，Netty 绑定失败，但 ZK 节点已经注册。
