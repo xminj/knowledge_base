@@ -225,7 +225,12 @@ Consumer 的 CuratorCache 收到通知
 * **Provider 端口冲突但注册成功了**
 	*  现象：第二个 Provider 用相同端口启动，Netty 绑定失败，但 ZK 节点已经注册。
 	* 原因：注册和启动的**顺序问题**。先注册后启动，启动失败时 ZK 节点还在（临时节点要等会话超时才删除）。
-	* 解决：
+	* 解决：**先启动 Netty Server，再注册 ZK**。
+	```java
+// 正确顺序
+new NettyRpcServer(port, handler).start();  // 先启动
+registry.register(serviceName, address);    // 后注册
+	```
 
 * **Consumer 的 Watcher 没触发**
 	* 现象：Provide注册了，但Consumer的缓存没更新
