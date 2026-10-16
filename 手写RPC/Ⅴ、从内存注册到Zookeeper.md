@@ -30,3 +30,23 @@ registry.register(HelloService.class.getName(), "127.0.0.1:8080");
 * CP模型，ZK集群不可用时整个注册中心不可用
 * 运维比Nacos稍复杂
 * Watcher在大规模客户端场景可能有"惊群效应"
+
+# 二、设计决策1：ZK节点结构怎么设计
+
+```text
+/minirpc                                               (持久节点，根目录)
+	|_org.xminj.minirpc.api.HelloService               (持久节点，服务名)
+		|_ 192.168.1.100                               (临时节点，provide 1)
+		|_ 192.168.1.101                               (临时节点，provide 1)       
+```
+为什么这样设计
+
+| 节点              | 类型  | 原因                    |
+| --------------- | --- | --------------------- |
+| /minirpc        | 持久  | 跟目录永远存在               |
+| /minirpc/服务名    | 持久  | 即使所有Provide下线，目录也不该消失 |
+| /minirpc/服务名/地址 | 临时  | Provide进程死，节点自动消失     |
+如果Provide节点也持久会怎么样
+* 进程挂了节点还在
+* Consumer一直调用一个死地址
+* 
