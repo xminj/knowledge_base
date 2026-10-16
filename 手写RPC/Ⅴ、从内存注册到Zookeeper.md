@@ -144,5 +144,20 @@ consumer从缓存里拿一个"已死"的地址
 优雅停机解决的：进程主动下线时，立刻通知zk删除节点。
 实现：
 ```java 
-
+public class ShutdownHook {
+    public static void register(Runnable cleanup) {
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                cleanup.run();
+            } catch (Exception e) {
+                log.error("优雅停机失败", e);
+            }
+        }, "rpc-shutdown-hook"));
+    }
+}
+// Provider 启动时
+ShutdownHook.register(() -> {
+    registry.unregister(HelloService.class.getName(), serviceAddress);
+});
 ```
+对比
