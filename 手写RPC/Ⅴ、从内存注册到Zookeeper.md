@@ -55,7 +55,7 @@ registry.register(HelloService.class.getName(), "127.0.0.1:8080");
 * 进程死，会话断，ZK自动删除
 * Consumner通过Watcher立刻感知
 
-# 设计决策2：为什么使用Curator，不用原生ZK api
+# 三、设计决策2：为什么使用Curator，不用原生ZK api
 
 原生Zookeeper API有三个致命问题
 * Watch 一次性失效
@@ -80,4 +80,4 @@ Curator解决了这些问题
 * CuratorCache：自动重新注册Watcher
 * **`creatingParentsIfNeeded()`** 自动递归创建
 * **`ExponentialBackoffRetry`**自动重试
-* 
+* API简洁，Fluent风格
