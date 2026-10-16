@@ -49,4 +49,8 @@ registry.register(HelloService.class.getName(), "127.0.0.1:8080");
 如果Provide节点也持久会怎么样
 * 进程挂了节点还在
 * Consumer一直调用一个死地址
-* 
+* 要人工清理节点
+
+如果使用临时节点
+* 进程死，会话断，ZK自动删除
+* Consumner通过Watcher立刻感知
