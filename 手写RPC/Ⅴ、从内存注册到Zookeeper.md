@@ -218,12 +218,27 @@ Consumer 的 CuratorCache 收到通知
 
 # 七、问题记录
 * **ZK 连接失败但程序不报错**
-	* 
-* **Consumer 的 Watcher 没触发**
-
+	* 现象
+	* 原因
+	* 解决
 
 * **Provider 端口冲突但注册成功了**
+	*  现象：第二个 Provider 用相同端口启动，Netty 绑定失败，但 ZK 节点已经注册。
+	* 原因：注册和启动的**顺序问题**。先注册后启动，启动失败时 ZK 节点还在（临时节点要等会话超时才删除）。
+	* 解决：
 
+* **Consumer 的 Watcher 没触发**
+	* 现象：Provide注册了，但Consumer的缓存没更新
+	* 原因：CuratorCache.build(client, path)的path必须已存在，如果服务节点不存在，Cache无法监听
+	* 解决：`watch()` 里先 `checkExists`，不存在则创建持久节点
+	```java
+if (client.checkExists().forPath(path) == null) {
+client.create().creatingParentsIfNeeded()
+	  .withMode(CreateMode.PERSISTENT)
+	  .forPath(path);
+}
+CuratorCache cache = CuratorCache.build(client, path);
+	```
 
 * **`CuratorCache` 导致重复监听**
 	* 现象：Consumner频繁刷新，日志爆炸
