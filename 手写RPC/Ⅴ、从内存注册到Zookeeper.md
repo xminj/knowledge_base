@@ -161,3 +161,71 @@ ShutdownHook.register(() -> {
 });
 ```
 对比
+
+| 场景      | 无优雅停机          | 有优雅停机          |
+| ------- | -------------- | -------------- |
+| kill -9 | zk会话超时后摘除（30s） | 无差别（-9不执行hook） |
+| kill    | 同上             | 立即注销节点         |
+| 正常退出    | 同上             | 立即注销节点         |
+# 六、完整链路：服务注册与发现
+```text
+[Provider 启动]
+   │
+   ▼
+Netty Server 绑定端口（先启动，后注册）
+   │
+   ▼
+创建 ZK 持久节点：/rpc/com.example.HelloService
+   │
+   ▼
+创建 ZK 临时节点：/rpc/com.example.HelloService/192.168.1.100:8080
+   │
+   ▼
+注册 ShutdownHook
+   │
+   ▼
+开始服务
+[Consumer 启动]
+   │
+   ▼
+创建 ZK 连接
+   │
+   ▼
+watch(服务名) → 建立 CuratorCache 监听
+   │
+   ▼
+discover(服务名) → 从 ZK 拉取地址列表 → 写入本地缓存
+   │
+   ▼
+代理调用时：从缓存拿地址 → 负载均衡 → 选一个 → 调用
+[Provider 挂掉]
+   │
+   ▼
+ShutdownHook 触发（或会话超时）
+   │
+   ▼
+ZK 删除临时节点
+   │
+   ▼
+Consumer 的 CuratorCache 收到通知
+   │
+   ▼
+刷新本地缓存
+   │
+   ▼
+下次调用只用存活的地址
+```
+
+# 七、问题记录
+* **ZK 连接失败但程序不报错**
+	* 
+* **Consumer 的 Watcher 没触发**
+
+
+* **Provider 端口冲突但注册成功了**
+
+
+* **`CuratorCache` 导致重复监听**
+	* 现象：Consumner频繁刷新，日志爆炸
+	* 原因：watch()被调用了多次（比如多次创建Consumner实例）
+	* 解决：watch()只调用一次，或者用Map<serverName,CuratorCache>去重
