@@ -81,3 +81,68 @@ Curator解决了这些问题
 * **`creatingParentsIfNeeded()`** 自动递归创建
 * **`ExponentialBackoffRetry`**自动重试
 * API简洁，Fluent风格
+
+
+# 四、设计决策3：为什么需要本地缓存
+
+如果没有缓存：每次discover()都查ZK。
+```text
+Consumer 调用 1000 次/秒
+  → ZK 收到 1000 次查询/秒
+  → ZK 压力大，延迟高，可能成为瓶颈
+```
+
+如果只能缓存不监听：Provide上下线后，Consumer不知道，一直用旧地址
+所有：缓存+Watcher组合
+* 正常情况下缓存，快，不查ZK
+* zk变化时更新缓存，准，靠Watcher
+实现：
+```java
+private final Map<String, List<String>> cache = new ConcurrentHashMap<>();
+
+@Override
+public List<String> discover(String serviceName) {
+    // 1. 先查缓存
+    List<String> cached = cache.get(serviceName);
+    if (cached != null && !cached.isEmpty()) {
+        return new ArrayList<>(cached);
+    }
+    // 2. 缓存没有，查 ZK
+    return refreshAndGet(serviceName);
+}
+
+// Consumer 启动时调用一次
+public void watch(String serviceName) {
+    CuratorCache cache = CuratorCache.build(client, path);
+    cache.listenable().addListener((type, oldData, newData) -> {
+        // 服务变化时刷新缓存
+        refreshAndGet(serviceName);
+    });
+    cache.start();
+}
+```
+# 五、设计决策4：为什么需要优雅停机？
+
+先看一个场景
+```text
+Provide 进程被 kill
+	│
+    ▼
+zk临时节点还在（要等会话超时）
+	│
+    ▼
+consumer从缓存里拿一个"已死"的地址
+	│
+    ▼
+调用失败
+	│
+    ▼
+等30秒（zk会话超时）后才感知
+```
+
+这就是问题：临时节点解决了"进程死了自动摘除"，但摘除需要等会话超时（默认30秒）
+优雅停机解决的：进程主动下线时，立刻通知zk删除节点。
+实现：
+```java 
+
+```
