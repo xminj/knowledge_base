@@ -56,3 +56,28 @@ registry.register(HelloService.class.getName(), "127.0.0.1:8080");
 * Consumner通过Watcher立刻感知
 
 # 设计决策2：为什么使用Curator，不用原生ZK api
+
+原生Zookeeper API有三个致命问题
+* Watch 一次性失效
+	```java
+// 原生 API：注册一次，只触发一次
+zk.getChildren(path, event -> {
+    // 处理事件
+    // 处理完必须重新注册！否则下次收不到
+    zk.getChildren(path, this);  // 忘记这行 = 永远收不到通知
+});
+	```
+* 不支持递归创建节点
+```java
+// 创建 /rpc/com.example.HelloService/127.0.0.1:8080
+// 必须先创建 /rpc，再创建 /rpc/服务名，再创建地址节点
+// 原生 API 每层都要 checkExists + create
+```
+* 异常处理繁琐
+  NodeExistsException、ConnectionLossException、SessionExpiredException...没种异常要单独处理
+
+Curator解决了这些问题
+* CuratorCache：自动重新注册Watcher
+* **`creatingParentsIfNeeded()`** 自动递归创建
+* **`ExponentialBackoffRetry`**自动重试
+* 
