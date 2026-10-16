@@ -54,3 +54,5 @@ registry.register(HelloService.class.getName(), "127.0.0.1:8080");
 如果使用临时节点
 * 进程死，会话断，ZK自动删除
 * Consumner通过Watcher立刻感知
+
+# 设计决策2：为什么使用Curator，不用原生ZK api
