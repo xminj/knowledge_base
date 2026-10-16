@@ -8,4 +8,16 @@ registry.register(HelloService.class.getName(), "127.0.0.1:8080");
 问题很明显：
 * 跨进程不可用：Prodiver注册在它自己的进程里，Consumer根本看不到
 * Provider挂了不知道：Consumer一致调用一个死地址
-* 无法动态扩容：
+* 无法动态扩容：加一个Provide要手动修改Consumer代码
+
+在本阶段把注册中心换成Zookeeper，让服务自动注册、自动发现、自动感知上下线。
+
+# 一、为什么使用Zookeeper？
+候选方案对比
+
+| 方案        | 一致性     | 成熟度         | 运维成本 | 与RPC场景契合度 |
+| --------- | ------- | ----------- | ---- | --------- |
+| Zookeeper | CP      | 高（Dubbo老搭档） | 中    | 临时节点天然契合  |
+| Nacos     | AP/CP可选 | 高           | 低    |           |
+|           |         |             |      |           |
+|           |         |             |      |           |
