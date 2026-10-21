@@ -120,6 +120,62 @@ public Object invoke(...) {
 
 有拦截器后
 ```java
-
+public Object invoke(...) {
+    interceptorChain.before(request);
+    try {
+        Object result = doInvoke(...);
+        interceptorChain.after(request, response);
+        return result;
+    } catch (Exception e) {
+        interceptorChain.onException(request, e);
+        throw e;
+    }
+}
 ```
 
+每个关注点一个拦截器，通过order排序
+和Spring AOP的对比
+
+| 方案         | 优点           | 缺点          |
+| ---------- | ------------ | ----------- |
+| Spring AOP | 生态好，注解驱动     | 依赖Spring ,重 |
+| 自定义拦截器     | 轻量、不依赖spring | 需要自己实现      |
+自定义拦截器：因为RPC框架的拦截器需求简单，不需要Spring AOP那么强大的表达式和切点
+
+# 三、设计决策2：为什么共用`RpcConText+`ThreadLocal`?
+场景：拦截器之间需要信息共享（比如requestId，开始时间、远程地址）
+方案对比
+
+| 方案          | 问题              |
+| ----------- | --------------- |
+| 方法参数传递      | 每个拦截器都要加参数，接口爆炸 |
+| 全局变量        | 并发不安全           |
+| ThreadLocal | 线程隔离，天然支持       |
+实现：
+```java 
+public class RpcContext {
+    private static final ThreadLocal<RpcContext> LOCAL =
+        ThreadLocal.withInitial(RpcContext::new);
+    public static RpcContext get() { return LOCAL.get(); }
+    public static void remove() { LOCAL.remove(); }
+}
+```
+关键点：必须再`finally`里面`remove()`,否则线程复用时造成内存泄漏
+```java
+try {
+    // 使用 RpcContext
+} finally {
+    RpcContext.remove();  // 必须清理
+}
+```
+
+# 四、设计决策3：为什么要做注解驱动？
+开头也提到，一个服务需要写3行代码，创建`ZkServiceDiscovery`是重复的；业务代码里混入了 框架代码
+使用注解驱动的代码
+```java
+@RpcReference
+private HelloService helloService;
+```
+
+一行注解，搞定一切。
+为什么能做到：`BeanPostProcessor`再Beanchu'sh
