@@ -187,4 +187,32 @@ private HelloService helloService;
 | 手动`getProxy()`         | 简单        | 每次都要写         |
 | `@Autowired` + `@Bean` | Spring 原生 | 需要为每个接口声明Bean |
 | `BeanPostProcessor`    | 自动，五侵入    | 需要反射          |
-选择
+选择`BeanPostProcessor`：它是Spring提供的Bean初始化前后钩子，再Bean初始化之前把代理塞进去，用户完全无感知。
+实现：
+```java
+@Override
+public Object postProcessBeforeInitialization(Object bean, String beanName) {
+    for (Field field : bean.getClass().getDeclaredFields()) {
+        if (!field.isAnnotationPresent(RpcReference.class)) continue;
+        field.setAccessible(true);
+        field.set(bean, proxy.getProxy(field.getType()));
+    }
+    return bean;
+}
+```
+
+# 六、设计决策4：为什么用 `SmartInitializingSingleton` 而不是 `@PostConstruct`？
+Provide端需要再启动时注册服务。
+
+| 钩子                           | 时机            | 问题               |
+| ---------------------------- | ------------- | ---------------- |
+| `@PostConstruct`             | 单个Bean初始化     | 太早，其他Bean可能还没有就绪 |
+| `ApplicationRunner`          | 启动完成前         | 太晚，服务已经暴露        |
+| `SmartInitializingSingleton` | 所有单例Bean初始化后， | 刚好               |
+
+为什么`@PostConstruct`不行
+* `@PostConstruct`在当前Bean初始化后执行
+* 此时其他Bean可能还没有创建
+* 如果`RpcServerRunner`依赖`ServiceRegistry`，可能拿到null
+为什么`ApplicationRunner`不行
+* *
