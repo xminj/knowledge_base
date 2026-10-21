@@ -178,4 +178,13 @@ private HelloService helloService;
 ```
 
 一行注解，搞定一切。
-为什么能做到：`BeanPostProcessor`再Beanchu'sh
+为什么能做到：`BeanPostProcessor`再Bean初始化前，扫描字段上的`@RpcReference`，注入动态代理。
+
+# 五、设计决策4：为什么使用`BeanPostProcessor`注入代理？
+
+| 方案                     | 优点        | 缺点            |
+| ---------------------- | --------- | ------------- |
+| 手动`getProxy()`         | 简单        | 每次都要写         |
+| `@Autowired` + `@Bean` | Spring 原生 | 需要为每个接口声明Bean |
+| `BeanPostProcessor`    | 自动，五侵入    | 需要反射          |
+选择
