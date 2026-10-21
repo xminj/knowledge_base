@@ -201,7 +201,7 @@ public Object postProcessBeforeInitialization(Object bean, String beanName) {
 }
 ```
 
-# 六、设计决策4：为什么用 `SmartInitializingSingleton` 而不是 `@PostConstruct`？
+# 六、设计决策5：为什么用 `SmartInitializingSingleton` 而不是 `@PostConstruct`？
 Provide端需要再启动时注册服务。
 
 | 钩子                           | 时机            | 问题               |
@@ -215,4 +215,59 @@ Provide端需要再启动时注册服务。
 * 此时其他Bean可能还没有创建
 * 如果`RpcServerRunner`依赖`ServiceRegistry`，可能拿到null
 为什么`ApplicationRunner`不行
-* *
+* `ApplicationRunner`在Spring Boot启动最后执行
+* 此时Timcat已经监听端口了，服务已经暴露
+* 如果Netty启动失败，用户可能已经调用了。
+
+`SmartInitializingSingleton`的时机：
+* 所有单例Bean初始化完毕
+* 但Spring boot还没完全启动
+* 这时的依赖都就绪了，但还没有对外服务的完美瞬间
+
+
+# 七、设计决策6：为什么 `@RpcService` 要加 `@Component`？
+问题：如果`@RpcService`不加`@Component`，标注的类不会被扫描为Spring Bean。`getBeansWithAnnotation(RpcService.class)` 找不到它。
+解决：`@RpcService` 上再加 `@Component`：
+```java
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+@Component                    // ← 关键
+public @interface RpcService {
+    Class<?> interfaceClass() default void.class;
+}
+```
+**这是 Spring 的"元注解"技巧**：`@Component` 是 `@RpcService` 的元注解，标注 `@RpcService` 等价于标注 `@Component`。
+
+
+# 九、问题记录
+* **`@RpcReference` 注入后还是 null**
+	* 现象：Consumer 启动正常，调用时字段为 null。
+	* 原因：`BeanPostProcessor` 的 `postProcessBeforeInitialization` 在**构造器之后**执行。如果字段在构造器里被使用，此时还是 null。
+	* 解决：不要在构造器里使用 `@RpcReference` 字段，用字段注入或 setter 注入。
+	* 教训：**Spring 的依赖注入有严格的顺序，构造器早于所有后处理器。**
+
+
+* **Provider 注册的地址 Consumer 访问不到**
+	* 现象：ZK 里能看到节点，Consumer 也能发现，但调用超时。
+	* 原因：`InetAddress.getLocalHost().getHostAddress()` 返回的是 `127.0.0.1`，跨机器访问不到。
+	* 解决：用 `NetworkInterface` 遍历网卡，取第一个非回环的 IPv4 地址。
+
+ 
+* **Spring Boot 3.x / 4.x 找不到自动配置**
+	* 现象：加了 starter 依赖，但 `RpcAutoConfiguration` 没生效。
+	* 原因：Spring Boot 3.x 移除了 `spring.factories` 对自动配置的支持，改用 `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`。
+	* 解决：两个文件都放，兼容 2.x / 3.x / 4.x。
+	* 教训：**框架的自动配置机制在演进，踩坑是学习的最好机会。**
+
+
+* **拦截器顺序错乱**
+	* 现象：耗时统计的日志出现在日志拦截器之前，耗时数据不准。
+	* 原因：`InterceptorChain` 没有排序。
+	* 解决：`addInterceptor` 时按 `order` 排序，`before` 正序执行，`after` 逆序执行（像 AOP 的环绕通知）。
+	* 教训：**拦截器链的顺序，决定了日志的因果逻辑。**
+ 
+* **`UnsupportedOperationException` —— 不可变集合的坑**
+	* 现象：调用时抛 `UnsupportedOperationException`，堆栈指向 `available.remove(address)`。
+	* 原因：`filter` 方法返回的 `List` 是不可变的（`Stream.toList()` 在 JDK 16+ 返回不可变列表），`remove` 直接抛异常。
+	* 解决：`new ArrayList<>(filter(...))` 包一层，或者让 `filter` 直接返回可变列表。
+	* 教训：**任何要 `remove` 的 `List`，都必须确认它是可变的。**
