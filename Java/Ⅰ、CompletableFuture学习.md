@@ -15,4 +15,5 @@ volatile Completion stack;    // Top of Treiber stack of dependent actions -- �
 
 当`cf.thenApply(fn)`时，源码做的大致是：
 * 创建一个新的`CompletableFuture`(记为d)，作为`thenApply`的返回结果。
-* 创建一个`UniApply`节点，它持有：源Future `this`、下游Future 
+* 创建一个`UniApply`节点，它持有：源Future `this`、下游Future `d`、函数`fn`
+* 如果`this`已完成
