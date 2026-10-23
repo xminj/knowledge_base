@@ -25,5 +25,14 @@ volatile Completion stack;    // Top of Treiber stack of dependent actions -- �
 
 当某个Future被`complete(value)`时，源码不会直接”通知“所有下游，而是做两件事
 * CAS把`result`从`null`改为`value`（或`AltResult`）
-* 调用`postComplete()`，开始
+* 调用`postComplete()`，开始弹栈并触发
+`postComplete`的逻辑是：从`stack`顶部不断弹出`Complete`节点，对每个节点调用它的`tryFire()`方法，`tryFire`会检查源Future是否真正的完成了，如果完成，就会执行传入的函数，然后把结果填入下游Future `d` ，并递归触发`d`自己的`postComplete`,把完成信号继续向下传播。
+
+这就是为什么链式调用的”惰性“的：注册只是压栈，真正只执行发成再源Future被完成的那一刻，由完成线程一路推下去。
+
+
+# 四、并发安全怎么保证
+
+整个结构没有用`synchronized`，全靠CAS
+* 压栈用`tryPushStack`，CAS替换`stack`头节点
 `
