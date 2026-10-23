@@ -16,4 +16,14 @@ volatile Completion stack;    // Top of Treiber stack of dependent actions -- �
 当`cf.thenApply(fn)`时，源码做的大致是：
 * 创建一个新的`CompletableFuture`(记为d)，作为`thenApply`的返回结果。
 * 创建一个`UniApply`节点，它持有：源Future `this`、下游Future `d`、函数`fn`
-* 如果`this`已完成
+* 如果`this`已完成，直接在当前线程执行`fn`，把结果填入`d`,返回`d`
+* 如果`this`未完成，把`UniApply`节点压入`this.stack`，然后返回那个还未完成的`d`
+
+关键点在于：`thenApply`**返回的`d`本身可能还没有完成**。调用方拿到`d`后继续`.thenAppley(....)`,就是在`d`的`stack`里再压一个节点。这样，多个Future通过`Completion`节点里`dep`（下游引用）和`src`（上游引入）指针，形成一条跨多个Future的链。
+
+# 三、完成的传播：postComplete与tryFire
+
+当某个Future被`complete(value)`时，源码不会直接”通知“所有下游，而是做两件事
+* CAS把`result`从`null`改为`value`（或`AltResult`）
+* 调用`postComplete()`，开始
+`
