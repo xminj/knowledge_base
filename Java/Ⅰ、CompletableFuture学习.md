@@ -36,5 +36,7 @@ volatile Completion stack;    // Top of Treiber stack of dependent actions -- �
 整个结构没有用`synchronized`，全靠CAS
 * 压栈用`tryPushStack`，CAS替换`stack`头节点，失败就自旋重试
 * 完成结果用`internalComplete`，CAS把`result`从`null`改为目标值，保证只有一个线程能”成功完成“它。
-* 触发节点
+* 触发节点时，`Comletion`内部有状态CAS，防止同一个回调被重复执行。
+
+
 `
