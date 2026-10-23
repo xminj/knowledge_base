@@ -34,5 +34,7 @@ volatile Completion stack;    // Top of Treiber stack of dependent actions -- �
 # 四、并发安全怎么保证
 
 整个结构没有用`synchronized`，全靠CAS
-* 压栈用`tryPushStack`，CAS替换`stack`头节点
+* 压栈用`tryPushStack`，CAS替换`stack`头节点，失败就自旋重试
+* 完成结果用`internalComplete`，CAS把`result`从`null`改为目标值，保证只有一个线程能”成功完成“它。
+* 触发节点
 `
