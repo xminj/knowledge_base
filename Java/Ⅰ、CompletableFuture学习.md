@@ -7,4 +7,4 @@ volatile Object result;       // Either the result or boxed AltResult  -- 计算
 volatile Completion stack;    // Top of Treiber stack of dependent actions -- 依赖动作栈（Treiber Stack）
 ```
 
-`result`决定这个Future是否*完成*。`null`表示未完成；非`null`表示已完成。正常返回值直接存入；返回
+`result`决定这个Future是否*完成*。`null`表示未完成；非`null`表示已完成。正常返回值直接存入；返回`null`或抛出异常时，用一个内部类`AltResult`包装。`AltResult.ex == null`代表正常返回了`null`，`AltResult.ex != null`代表异常。所有的`get()`、`join()`、`isDone()`的判断，底层都是在看这个字段是否为空。
